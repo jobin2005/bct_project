@@ -12,9 +12,14 @@ class ConsensusSimulator:
         self.committee_size = 0
         self.weights = {} # validator_id -> weight
         self.fsm_tier = 0
+        self.watchlist = False
         
         # historical tracking
         self.history = []
+        
+        # FSM layer 5 metadata
+        self.rolling_data = pd.DataFrame()
+        self.epochs_since_retrain = 0
         
     def initialize_weights(self, validators):
         self.weights = {v: 1.0 for v in validators}
@@ -31,10 +36,14 @@ class ConsensusSimulator:
         """
         Runs the logic for a single epoch.
         """
+        # Tracking rolling data for 60 epochs
+        self.rolling_data = pd.concat([self.rolling_data, validator_data])
+        min_rolling_epoch = epoch - 59
+        self.rolling_data = self.rolling_data[self.rolling_data['epoch'] >= min_rolling_epoch]
+
         # 1. Predictions
         p_fail_list = models.predict_failure(validator_data)
         anomaly_scores, is_anomaly = models.predict_anomaly(validator_data)
-        
         p_fork = models.predict_fork(pd.DataFrame([network_data]))[0]
         
         # Calculate momentum (simple proxy using previous epoch CNRS if available)
@@ -51,34 +60,70 @@ class ConsensusSimulator:
         self.state = 'NORMAL'
         self.fsm_tier = 0
         self.timeout = 10.0
+        self.watchlist = False
         
         # Override for high fork risk
         if p_fork > 0.7:
             self.qt = 0.80
             self.state = 'ELEVATED_FORK_RISK'
         
-        if self.state != 'ELEVATED_FORK_RISK':
-            if cnrs < 0.30:
+        # Apply Layer 4 thresholds regardless of fork (as stated: bypass CNRS -> set qt, then GO TO LAYER 4 to apply weights)
+        if cnrs < 0.30:
+            if self.state != 'ELEVATED_FORK_RISK':
                 self.qt = 0.67
-                self.timeout += 2.0
                 self.state = 'NORMAL'
-            elif 0.30 <= cnrs < 0.60:
+            self.timeout += 2.0
+            
+            # Layer 5 Recovery Check (De-escalation)
+            if len(self.history) > 0 and self.history[-1]['fsm_tier'] > 0:
+                print(f"[Tier De-escalation] System recovered safely at epoch {epoch}.")
+                self.epochs_since_retrain = 0
+                for v in self.weights.keys(): 
+                    self.weights[v] = 1.0 # Restore weights
+                    
+        elif 0.30 <= cnrs < 0.60:
+            if self.state != 'ELEVATED_FORK_RISK':
                 self.qt = 0.75
                 self.state = 'CAUTIOUS'
-                # Reduce risky validator weights
-                for i, v in enumerate(validator_data['validator_id']):
-                    if p_fail_list[i] > 0.5 or is_anomaly[i]:
-                        self.weights[v] = 0.5
-            elif 0.60 <= cnrs < 0.85:
+            # Reduce risky validator weights
+            for i, v in enumerate(validator_data['validator_id']):
+                if p_fail_list[i] > 0.5 or is_anomaly[i]:
+                    self.weights[v] = 0.5
+                    
+        elif 0.60 <= cnrs < 0.85:
+            if self.state != 'ELEVATED_FORK_RISK':
                 self.qt = 0.85
                 self.state = 'RESTRICTED'
-                # Isolate top risk
-                for i, v in enumerate(validator_data['validator_id']):
-                    if p_fail_list[i] > 0.7 or anomaly_scores[i] > 0.8:
-                        self.weights[v] = 0.0
+            # Isolate top risk
+            for i, v in enumerate(validator_data['validator_id']):
+                if p_fail_list[i] > 0.7 or anomaly_scores[i] > 0.8:
+                    self.weights[v] = 0.0
+                    
+        else:
+            self.state = 'CRITICAL'
+            # Determine Tier based on severity
+            if cnrs < 0.90:
+                self.fsm_tier = 1
+            elif cnrs < 0.95:
+                self.fsm_tier = 2
             else:
-                self.state = 'CRITICAL'
                 self.fsm_tier = 3
+            
+            # Layer 5 Watchlist & Retraining (Tier 1 & 2)
+            if self.fsm_tier in [1, 2]:
+                self.watchlist = True
+                if self.state != 'ELEVATED_FORK_RISK':
+                    self.qt = 0.85 # Inherit max normalized restriction
+                    
+                self.epochs_since_retrain += 1
+                
+                if self.epochs_since_retrain >= 20:
+                    print(f"[Tier {self.fsm_tier} Watchlist] Triggering Online Retraining at Epoch {epoch}...")
+                    models.train(self.rolling_data)
+                    self.epochs_since_retrain = 0
+                    
+            # Layer 5 safe mode (Tier 3)
+            elif self.fsm_tier == 3:
                 self.qt = 0.90 # SAFE-MODE
                 # Minimizing committee
                 sorted_vals = np.argsort(p_fail_list)
