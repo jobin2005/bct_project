@@ -1,7 +1,9 @@
 # Virtual environments
 venv/
-env/
 .venv/
+test_venv/
+AdaptiveConsensus/venv/
+AdaptiveConsensus/test_venv/
 
 # Python cache
 __pycache__/
