@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from sklearn.ensemble import IsolationForest, RandomForestClassifier
+from sklearn.ensemble import IsolationForest, RandomForestClassifier, GradientBoostingClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 
@@ -8,8 +8,9 @@ class PredictiveModels:
     def __init__(self):
         self.anomaly_detector = IsolationForest(contamination=0.05, random_state=42)
         self.failure_predictor = RandomForestClassifier(n_estimators=50, max_depth=5, random_state=42)
-        self.fork_predictor = LogisticRegression(max_iter=1000, random_state=42)
+        self.fork_predictor = RandomForestClassifier(n_estimators=100, max_depth=10, random_state=42)
         self.scaler = StandardScaler()
+        self.net_scaler = StandardScaler()
 
     def extract_features(self, df):
         # We extract the '_mu_ws', '_mu_wl', '_var_ws', '_var_wl', '_roc' features
@@ -49,7 +50,7 @@ class PredictiveModels:
         # 3. Fork Risk Predictor (predict fork_occurrences > 0)
         # Network level, so we aggregate by epoch first
         epoch_df = historical_df.groupby('epoch').first().reset_index()
-        X_net = epoch_df[net_features].fillna(0)
+        X_net = self.net_scaler.fit_transform(epoch_df[net_features].fillna(0))
         y_fork = (epoch_df['fork_occurrences'] > 0).astype(int)
         if len(y_fork.unique()) > 1:
             self.fork_predictor.fit(X_net, y_fork)
@@ -89,7 +90,7 @@ class PredictiveModels:
 
     def predict_fork(self, network_df):
         net_features = self.extract_network_features(network_df)
-        X_net = network_df[net_features].fillna(0)
+        X_net = self.net_scaler.transform(network_df[net_features].fillna(0))
         if len(self.fork_predictor.classes_) > 1:
             return self.fork_predictor.predict_proba(X_net)[:, 1]
         else:
