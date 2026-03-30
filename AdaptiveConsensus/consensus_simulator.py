@@ -32,9 +32,10 @@ class ConsensusSimulator:
         # Bound it strictly between 0 and 1
         return min(max(cnrs, 0.0), 1.0)
         
-    def step_epoch(self, epoch, validator_data, network_data, models):
+    def step_epoch(self, epoch, validator_data, network_data, models, force_cnrs=None):
         """
         Runs the logic for a single epoch.
+        force_cnrs: If provided (float 0.0-1.0), overrides the ML-predicted CNRS directly.
         """
         # Tracking rolling data for 60 epochs
         self.rolling_data = pd.concat([self.rolling_data, validator_data])
@@ -50,10 +51,15 @@ class ConsensusSimulator:
         momentum = 0.0
         if len(self.history) > 0:
             last_cnrs = self.history[-1]['cnrs']
-            momentum = last_cnrs * 0.5 # exponentially decaying momentum
+            # Allow momentum to fully accumulate so mathematically CNRS can reach 1.0
+            momentum = last_cnrs * 1.0 
             
         # 2. Layer 3 Risk Scoring
         cnrs = self.calculate_cnrs(p_fail_list, anomaly_scores, momentum)
+        
+        # Allow external override for controlled simulation scenarios (e.g., testing Tier 3)
+        if force_cnrs is not None:
+            cnrs = float(force_cnrs)
         
         # 3. Layer 4 Adaptive Reconfiguration & Layer 5 Self-Healing
         self.qt = 0.67 # Reset default
