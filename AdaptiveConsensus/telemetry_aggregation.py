@@ -12,7 +12,8 @@ VALIDATOR_FEATURES = [
 NETWORK_FEATURES = [
     'msg_latency_ms', 'latency_variance', 'packet_loss_rate',
     'partition_indicator', 'block_finalization_time_sec',
-    'quorum_margin', 'timeout_events', 'fork_occurrences'
+    'quorum_margin', 'timeout_events',
+    'network_stale_rate'
 ]
 
 def safe_rate_of_change(short_val, long_val):
@@ -59,8 +60,8 @@ def aggregate_telemetry(df):
         
         net_df[f'net_{feat}_roc'] = net_df.apply(lambda row: safe_rate_of_change(row[f'net_{feat}_mu_ws'], row[f'net_{feat}_mu_wl']), axis=1)
         
-        # Drop original feature from net_df to avoid collision on merge
-        net_df = net_df.drop(columns=[feat])
+        # Rename original feature in net_df to have net_ prefix
+        net_df = net_df.rename(columns={feat: f'net_{feat}'})
         
     df = df.merge(net_df, on='epoch', how='left')
     

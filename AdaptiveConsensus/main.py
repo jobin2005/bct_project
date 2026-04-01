@@ -125,7 +125,7 @@ def main():
     print(f"Total epochs simulated: {len(history_df)}")
     
     print("Generating Evaluation results...")
-    evaluator = Evaluator(test_df, history_df, output_dir='/home/jobin/bct proj/AdaptiveConsensus/results')
+    evaluator = Evaluator(test_df, history_df, output_dir='/home/jobin/bct proj/Adaptive/results')
     evaluator.evaluate_and_plot()
 
 if __name__ == "__main__":

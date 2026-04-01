@@ -4,7 +4,12 @@ from telemetry_aggregation import aggregate_telemetry
 from predictive_models import PredictiveModels
 
 try:
-    df = pd.read_excel('/home/jobin/bct proj/BlockSim/telemetry_dataset.xlsx')
+    # Try local first, then parent for flexibility
+    import os
+    data_path = 'telemetry_dataset.xlsx'
+    if not os.path.exists(data_path):
+        data_path = '../telemetry_dataset.xlsx'
+    df = pd.read_excel(data_path)
     df_agg = aggregate_telemetry(df)
     
     split_epoch = df_agg['epoch'].median()
@@ -17,7 +22,8 @@ try:
     # Evaluate Failure Predictor
     features = models.extract_features(test_df)
     X_test_fail = models.scaler.transform(test_df[features].fillna(0))
-    y_test_fail = (test_df['health_label'] == 0).astype(int)
+    # Map "Healthy" to 0, others to 1 (Failure)
+    y_test_fail = (test_df['health_label'] != 'Healthy').astype(int)
     
     y_pred_fail = models.failure_predictor.predict(X_test_fail)
     print("--- Validator Failure Predictor (Random Forest) ---")
@@ -33,7 +39,7 @@ try:
     y_test_fork = (epoch_df['fork_occurrences'] > 0).astype(int)
     
     y_pred_fork = models.fork_predictor.predict(X_test_fork)
-    print("\n--- Network Fork Predictor (Logistic Regression) ---")
+    print("\n--- Network Fork Predictor (Gradient Boosting) ---")
     print("Accuracy:", round(accuracy_score(y_test_fork, y_pred_fork), 4))
     print(classification_report(y_test_fork, y_pred_fork))
 

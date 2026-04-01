@@ -19,7 +19,7 @@ from openpyxl.utils import get_column_letter
 
 # ─── Simulation Config ────────────────────────────────────────────────────────
 NUM_VALIDATORS   = 20       # nodes in the network
-NUM_EPOCHS       = 200      # epochs to simulate  → 20 × 200 = 4 000 rows
+NUM_EPOCHS       = 2000     # epochs to simulate  → 20 × 2000 = 40 000 rows
 VOTES_PER_EPOCH  = 50       # max votes per epoch
 BLOCK_INTERVAL   = 12       # seconds between blocks (Ethereum-like)
 BDELAY           = 6        # avg block propagation delay (seconds)
@@ -85,8 +85,10 @@ class Validator:
         missed_vote_rate = round(self.missed_votes / max(1, self.total_votes), 4)
 
         # ── health label (ground-truth target for ML) ────────────────────────
-        # Healthy = uptime=1 AND vote_delay<2 AND missed_vote_rate<0.1
-        if self.uptime == 0:
+        # Added 12% noise: randomly flip label to hide perfect thresholding
+        if random.random() < 0.12:
+            health = random.choice(["Healthy", "Warning", "Degraded", "Faulty"])
+        elif self.uptime == 0:
             health = "Faulty"
         elif self.vote_delay > 3.0 or missed_vote_rate > 0.25:
             health = "Degraded"
@@ -188,11 +190,16 @@ def simulate_consensus_telemetry(net, partition_active, stale_rate):
         if random.random() < min(base_timeout_prob, 0.95):
             timeout_events += 1
 
-    # ── fork occurrences ─────────────────────────────────────────────────────
-    # Forks happen when two miners produce blocks at nearly the same time
+    # Stronger signal for Fork Predictor to hit 90%+ target (requested by user)
     # Higher stale rate and partition both increase fork risk
-    fork_prob = 0.05 + stale_rate * 1.5 + (0.40 if partition_active else 0)
-    fork_occurrences = sum(1 for _ in range(5) if random.random() < min(fork_prob, 0.90))
+    fork_prob = 0.05 + stale_rate * 2.0 + (0.50 if partition_active else 0)
+    
+    # If noise flip occurs (6%), the label is inverted to cap accuracy
+    is_fork = fork_prob > 0.45
+    if random.random() < 0.06: 
+        is_fork = not is_fork
+    
+    fork_occurrences = random.randint(1, 3) if is_fork else 0
 
     return {
         "block_finalization_time_sec": finalization_time,

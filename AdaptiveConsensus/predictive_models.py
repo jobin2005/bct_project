@@ -8,26 +8,31 @@ class PredictiveModels:
     def __init__(self):
         self.anomaly_detector = IsolationForest(contamination=0.05, random_state=42)
         self.failure_predictor = RandomForestClassifier(n_estimators=50, max_depth=5, random_state=42)
-        self.fork_predictor = RandomForestClassifier(n_estimators=100, max_depth=10, random_state=42)
+        self.fork_predictor = GradientBoostingClassifier(n_estimators=50, learning_rate=0.1, max_depth=3, subsample=0.8, random_state=42)
         self.scaler = StandardScaler()
         self.net_scaler = StandardScaler()
 
     def extract_features(self, df):
-        # We extract the '_mu_ws', '_mu_wl', '_var_ws', '_var_wl', '_roc' features
-        features = [col for col in df.columns if any(x in col for x in ['_mu_', '_var_', '_roc'])]
-        return features
+        # Include both aggregated features and raw performance metrics for stronger signal
+        base_features = ['uptime', 'vote_delay_sec', 'missed_vote_rate', 'blocks_produced', 'connectivity_degree']
+        agg_features = [col for col in df.columns if any(x in col for x in ['_mu_', '_var_', '_roc'])]
+        # Only include base features that actually exist in the dataframe
+        existing_base = [f for f in base_features if f in df.columns]
+        return existing_base + agg_features
         
     def extract_network_features(self, df):
-        features = [col for col in df.columns if 'net_' in col and any(x in col for x in ['_mu_', '_var_', '_roc'])]
-        return features
+        # Exclude the target labels from features, but keep raw network metrics (net_ prefix)
+        exclude = ['fork_occurrences', 'health_label', 'epoch']
+        # Also include raw metrics like net_msg_latency_ms, net_packet_loss_rate, etc.
+        return [col for col in df.columns if col.startswith('net_') and not any(x in col for x in exclude)]
 
     def train(self, historical_df):
         features = self.extract_features(historical_df)
         net_features = self.extract_network_features(historical_df)
         
         # 1. Anomaly Detector (train on healthy data only)
-        # assuming health_label == 1 means healthy
-        healthy_df = historical_df[historical_df['health_label'] == 1]
+        # Assuming health_label == "Healthy" is 0 in numerical form, or just filter by string
+        healthy_df = historical_df[historical_df['health_label'] == 'Healthy']
         if len(healthy_df) > 0:
             X_healthy = self.scaler.fit_transform(healthy_df[features].fillna(0))
             self.anomaly_detector.fit(X_healthy)
@@ -36,11 +41,11 @@ class PredictiveModels:
             X_all = self.scaler.fit_transform(historical_df[features].fillna(0))
             self.anomaly_detector.fit(X_all)
 
-        # 2. Failure Predictor (predict health_label == 0)
-        # health_label: 1=healthy, 0=failed/malicious
+        # 2. Failure Predictor (predict health_label != "Healthy")
+        # health_label: "Healthy" -> 0, else -> 1
         X_all = self.scaler.transform(historical_df[features].fillna(0))
-        y_fail = (historical_df['health_label'] == 0).astype(int)
-        if len(y_fail.unique()) > 1:
+        y_fail = (historical_df['health_label'] != 'Healthy').values.astype(int)
+        if len(np.unique(y_fail)) > 1:
             self.failure_predictor.fit(X_all, y_fail)
         else:
             # Create a dummy model or fake data if only 1 class is present
