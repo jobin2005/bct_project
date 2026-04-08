@@ -7,7 +7,7 @@ from consensus_simulator import ConsensusSimulator
 from evaluation import Evaluator
 
 def main():
-    dataset_path = '/home/jobin/bct proj/BlockSim/telemetry_dataset.xlsx'
+    dataset_path = '../telemetry_dataset.xlsx'
     
     print(f"Loading dataset from {dataset_path}...")
     if not os.path.exists(dataset_path):
@@ -125,7 +125,7 @@ def main():
     print(f"Total epochs simulated: {len(history_df)}")
     
     print("Generating Evaluation results...")
-    evaluator = Evaluator(test_df, history_df, output_dir='/home/jobin/bct proj/Adaptive/results')
+    evaluator = Evaluator(test_df, history_df, output_dir='./results')
     evaluator.evaluate_and_plot()
 
 if __name__ == "__main__":
