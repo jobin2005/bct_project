@@ -11,4 +11,3 @@ class Network:
     def tx_prop_delay():
     	return random.expovariate(1/p.Tdelay)
 	
-    self.connectivity_degree = len(self.neighbors)

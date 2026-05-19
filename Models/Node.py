@@ -20,15 +20,14 @@ class Node(object):
 
 
         #telemetry data
-        self.vote_delay = 0
+        self.vote_delay = 0.0
         self.missed_votes = 0
+        self.total_votes = 0
         self.total_epochs = 0
         self.uptime = 1
-        self.connectivity_degree = 0
         self.last_vote_time = 0
         self.last_block_time = 0
         self.neighbors=[]
-        self.vote_delay = event_time - block.timestamp
     # Generate the Genesis block and append it to the local blockchain for all nodes
     def generate_gensis_block():
         from InputsConfig import InputsConfig as p

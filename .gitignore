@@ -1,2 +1,10 @@
-venv
-**/__pycache__
+# Virtual environments
+venv/
+.venv/
+test_venv/
+AdaptiveConsensus/venv/
+AdaptiveConsensus/test_venv/
+
+# Python cache
+__pycache__/
+*.pyc
