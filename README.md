@@ -1,54 +1,98 @@
 # Predictive Self-Healing Adaptive Consensus for Smart-Grid Blockchains
 
-## Project Overview
-This project extends the **BlockSim** framework to implement a predictive, self-healing adaptive consensus mechanism tailored for smart-grid blockchain networks. It leverages machine learning to monitor validator health and network risks (forks) in real-time, triggering autonomous defensive actions.
-
-### 🚀 Key Features
-- **Telemetry-Driven Monitoring**: Real-time collection of validator performance (vote delays, missed votes) and network health (latency, packet loss).
-- **High-Accuracy Predictive Models**: 
-    - **Failure Predictor**: Identifies degraded or malicious nodes with **~93% Accuracy**.
-    - **Fork Predictor**: Forecasts network partition risks with **~94% Accuracy**.
-- **Adaptive Consensus**: Dynamic reconfiguration based on CNRS (Consensus Network Risk Score).
-- **Self-Healing Mechanisms**: Tiered responses including peer-switching, committee eviction, and partition recovery.
-
-## Installation & Setup
-Ensure you have **Python 3.8+** and the required dependencies:
-```bash
-pip install pandas numpy scikit-learn openpyxl xlsxwriter
-```
-*(Optional)* Use the provided virtual environment in `AdaptiveConsensus/venv`.
-
-## Getting Started
-
-### 1. Generate Telemetry Dataset
-Simulate a smart-grid blockchain network with failure injections and partitions:
-```bash
-python generate_telemetry.py
-```
-This produces `telemetry_dataset.xlsx` with detailed validator and network-level metrics.
-
-### 2. Evaluate Predictive Models
-Train and verify the ML models (Random Forest & Gradient Boosting):
-```bash
-cd AdaptiveConsensus
-python evaluate_accuracy.py
-```
-Outputs classification reports for both the Validator Failure and Network Fork predictors.
-
-### 3. Run Adaptive Simulation
-Run the full adaptive consensus simulator to see self-healing in action:
-```bash
-python AdaptiveConsensus/main.py
-```
-
-## Statistics and Results
-Simulation results are saved to `telemetry_dataset.xlsx` and the `AdaptiveConsensus/results/` directory, including:
-- Consensus Network Risk Scores (CNRS)
-- Predictive accuracy logs
-- Self-healing trigger events (Committe evictions, etc.)
-
-## Acknowledgements
-Based on the original **BlockSim** simulator. For the core simulation engine details, see the [Frontiers in Blockchain paper](https://www.frontiersin.org/articles/10.3389/fbloc.2020.00028/full).
+A rigorous, end-to-end closed-loop predictive consensus simulation framework for smart-grid blockchain networks. This framework transitions the repository from disjointed, static scripts to a scientific, closed-loop telemetry-driven consensus environment that optimizes reliability, resilience, stability, security, and performance.
 
 ---
-*Created for the BCT Adaptive Consensus Research Project.*
+
+## 🚀 Key Architectural Features
+
+The framework is built upon a **5-Layer Predictive Self-Healing Architecture**:
+
+1. **Layer 1: Telemetry Data Collection (`telemetry_generator.py`)**
+   - Simulates a smart-grid cluster topology (substations, microgrid controllers) across different geographical regions.
+   - Generates live, epoch-based validator metrics (uptime, vote delays, missed votes, connectivity) and network-level telemetry (latency, variance, packet loss, partitions).
+
+2. **Layer 2: Telemetry Aggregation (`telemetry_aggregation.py`)**
+   - Employs rolling dual-window feature engineering (Short Window = 5 epochs, Long Window = 30 epochs) to capture dynamic temporal patterns.
+   - Vectorized rates of change and min-max normalization ensure consistency and scale stability across feature vectors.
+
+3. **Layer 3: Risk Scoring & Predictors (`predictive_models.py`, `risk_scoring.py`)**
+   - **Validator Failure Predictor (RandomForest)**: Identifies deteriorating or faulty validator nodes.
+   - **Network Anomaly Detector (IsolationForest)**: Flags structural deviations and malicious behavior.
+   - **Fork Risk Predictor (Gradient Boosting)**: Forecasts upcoming block fork probabilities.
+   - **Composite Network Risk Score (CNRS)**: Dynamically combines failure probability, anomaly scores, and temporal risk momentum.
+
+4. **Layer 4: Adaptive Reconfiguration (`consensus_simulator.py`)**
+   - Real-time adjustment of consensus parameters based on CNRS.
+   - Adaptive quorum thresholds ($q_t$), message timeout adjustments, and individual validator voting weight reductions.
+
+5. **Layer 5: Self-Healing FSM (`consensus_simulator.py`)**
+   - Active, tiered Finite State Machine (FSM) triggered during critical risk levels.
+   - Tier 1/2 responses isolate/quarantine suspect validators and trigger online retraining of ML models.
+   - Tier 3 response switches to a secure-mode committee containing only highly reliable nodes.
+
+---
+
+## 🧪 Scenarios and Baselines
+
+### Disturbance Scenarios (`scenarios.py`)
+Disturbances are systematically injected under controlled durations:
+- **Normal**: Standard grid operating environment.
+- **Outage Burst**: High-voltage validator nodes drop offline.
+- **Latency Spike**: Communication congestion and telemetry delays.
+- **Partition**: Communication cut off between geographical clusters.
+- **Malicious**: Validators exhibit Byzantine delays and voting patterns.
+- **Combined Stress**: All disturbances occur in a multi-phase cascading pattern.
+
+### Evaluated Baselines (`baselines.py`)
+We evaluate and compare four distinct consensus paradigms:
+- **Static Consensus**: Fixed default parameters ($q_t=0.67$) with no recovery action.
+- **Healing Only**: Reactive self-healing FSM based on current metrics without predictive ML lookahead.
+- **Adaptive Only**: CNRS-based quorum adjustments using current metrics without predictive ML.
+- **Proposed (Full)**: The complete framework (ML Predictive Models $\rightarrow$ CNRS $\rightarrow$ Adaptive Reconfiguration $\rightarrow$ FSM Self-Healing).
+
+---
+
+## 🛠️ Installation and Setup
+
+1. **Verify Python Environment**: Ensure you have Python 3.8+ installed.
+2. **Install Dependencies**:
+   ```bash
+   pip install -r AdaptiveConsensus/requirements.txt
+   ```
+
+---
+
+## 🏃 Running the Experiments
+
+To run the complete 120-experiment scientific suite (4 Baselines × 6 Scenarios × 5 Random Seeds) and compile the evaluation report:
+
+```bash
+cd AdaptiveConsensus
+python main.py
+```
+
+*The simulator uses highly optimized vectorized feature pipelines, completing the entire multi-seed statistical evaluation suite in under 4 minutes.*
+
+---
+
+## 📊 Evaluation & Metrics (`evaluation.py`)
+
+The evaluation engine tracks **10 key performance metrics** across five academic dimensions:
+- **Reliability**: Fork Rate, Consensus Failure Probability.
+- **Resilience**: Mean and Max Recovery Time (epochs to return to NORMAL state).
+- **Stability**: State Oscillation Rate, Quorum Threshold Variance.
+- **Security**: Active Committee Size (Isolation of compromised validators).
+- **Performance**: Average Consensus Time (seconds), Composite Network Risk Scores.
+
+All metrics are compiled into a comprehensive statistical analysis with **Mean ± Standard Deviation** and **95% Confidence Intervals (CI)**.
+
+### Generated Visualizations (Saved in `AdaptiveConsensus/results/`)
+- `fig1_cnrs_comparison.png`: CNRS progression over time under combined stress.
+- `fig2_comparative_bars.png`: Comparative performance bars across all baselines.
+- `fig3_recovery_distribution.png`: Box plot showing recovery time distributions.
+- `fig4_qt_adaptation.png`: Real-time quorum threshold adaptation.
+- `fig5_committee_size.png`: Active validator committee size under self-healing eviction.
+- `fig6_fork_rate_by_scenario.png`: Fork rates grouped by disturbance scenario.
+- `fig7_ml_accuracy.png`: Failure and fork predictor accuracies across different random seeds.
+- `evaluation_report.txt`: Comprehensive summary text report with statistics, CI tables, and percentage improvement vs. static baselines.

@@ -1,10 +1,13 @@
-# Virtual environments
-venv/
-.venv/
-test_venv/
-AdaptiveConsensus/venv/
-AdaptiveConsensus/test_venv/
-
-# Python cache
 __pycache__/
 *.pyc
+*.pyo
+venv/
+.venv/
+*.xlsx
+results/
+*.pkl
+*.joblib
+.DS_Store
+*.egg-info/
+dist/
+build/

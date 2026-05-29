@@ -1,132 +1,222 @@
-import pandas as pd
-import numpy as np
+"""
+Main Experiment Runner — Predictive Self-Healing Adaptive Consensus.
+Runs all baselines × scenarios × seeds, collects results, and triggers evaluation.
+
+Closed-loop flow per epoch:
+  Telemetry Generation → Feature Aggregation → Risk Prediction →
+  Consensus Reconfiguration → Self-Healing (if triggered) → Consensus Outcome
+"""
+
 import os
+import sys
+import time
+import numpy as np
+import pandas as pd
+from itertools import product
+
+from config import (
+    NUM_VALIDATORS, NUM_EPOCHS, NUM_REGIONS,
+    RANDOM_SEEDS, TRAIN_FRACTION, SCENARIO_PROFILES,
+)
+from telemetry_generator import TelemetryGenerator
 from telemetry_aggregation import aggregate_telemetry
 from predictive_models import PredictiveModels
 from consensus_simulator import ConsensusSimulator
+from scenarios import Scenario
+from baselines import BASELINE_MODES
 from evaluation import Evaluator
 
-def main():
-    dataset_path = '../telemetry_dataset.xlsx'
-    
-    print(f"Loading dataset from {dataset_path}...")
-    if not os.path.exists(dataset_path):
-        print(f"Error: Dataset not found at {dataset_path}")
-        return
-        
-    df = pd.read_excel(dataset_path)
-    
-    # ==========================================
-    # ---> FAULT INJECTION SCENARIO START <---
-    # ==========================================
-    print("Injecting simulated faults for training and evaluation...")
-    
-    # Ensure numerical columns are represented as floats so multiplication doesn't fail on int64 columns
-    float_cols = ['uptime', 'missed_vote_rate', 'vote_delay_sec', 
-                  'msg_latency_ms', 'packet_loss_rate', 'partition_indicator', 'fork_occurrences', 'health_label']
-    for col in float_cols:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce').astype('float64')
-        
-    all_validators = df['validator_id'].unique()
-    num_bad = int(len(all_validators) * 0.33)
-    np.random.seed(42)
-    bad_validators = np.random.choice(all_validators, num_bad, replace=False)
-    
-    # 1. Inject Minor Faults in FIRST half (Training Data) so AI learns what failures look like
-    train_fault_start = df['epoch'].min() + 10
-    
-    mask_train_bad = (df['epoch'] >= train_fault_start) & (df['epoch'] < train_fault_start + 10) & (df['validator_id'].isin(bad_validators))
-    if 'health_label' in df.columns:
-        df.loc[mask_train_bad, 'health_label'] = 0
-    df.loc[mask_train_bad, 'uptime'] *= 0.1
-    df.loc[mask_train_bad, 'missed_vote_rate'] += 0.8
-    df.loc[mask_train_bad, 'vote_delay_sec'] *= 5.0
-    
-    mask_train_net = (df['epoch'] >= train_fault_start) & (df['epoch'] < train_fault_start + 10)
-    df.loc[mask_train_net, 'msg_latency_ms'] *= 3.0
-    df.loc[mask_train_net, 'fork_occurrences'] = 1
 
-    # 2. Inject Catastrophic Faults in SECOND half (Test Data) to trigger Tier 3 Self-Healing
-    test_fault_start = df['epoch'].median() + 20
-    
-    # Infect 90% of validators to push the network anomaly mean to ~0.9
-    num_catastrophic = int(len(all_validators) * 0.90)
-    catastrophic_validators = np.random.choice(all_validators, num_catastrophic, replace=False)
-    
-    mask_test_bad = (df['epoch'] >= test_fault_start) & (df['epoch'] < test_fault_start + 15) & (df['validator_id'].isin(catastrophic_validators))
-    if 'health_label' in df.columns:
-        df.loc[mask_test_bad, 'health_label'] = 0
-    df.loc[mask_test_bad, 'uptime'] *= 0.01
-    df.loc[mask_test_bad, 'missed_vote_rate'] += 0.95
-    df.loc[mask_test_bad, 'vote_delay_sec'] *= 15.0
-    
-    mask_test_net = (df['epoch'] >= test_fault_start) & (df['epoch'] < test_fault_start + 15)
-    df.loc[mask_test_net, 'msg_latency_ms'] *= 10.0
-    df.loc[mask_test_net, 'fork_occurrences'] = 1
-    df.loc[mask_test_net, 'partition_indicator'] = 1
-    # ==========================================
-    # ---> FAULT INJECTION SCENARIO END <---
-    # ==========================================
-    
-    print("Layer 1: Aggregating Telemetry...")
-    df_agg = aggregate_telemetry(df)
-    
-    print("Layer 2: Training Predictive Models...")
-    models = PredictiveModels()
-    # For a real system this would be offline training then online predicting.
-    # Here we train on the first half and simulate on the second half to see adaptation.
-    split_epoch = df_agg['epoch'].median()
-    train_df = df_agg[df_agg['epoch'] <= split_epoch].copy()
-    test_df = df_agg[df_agg['epoch'] > split_epoch].copy()
+def run_single_experiment(baseline_mode, scenario_name, seed, verbose=False):
+    """
+    Run a single experiment: one baseline × one scenario × one seed.
+    Returns: (history_df, train_accuracy_dict)
+    """
+    # Initialize telemetry generator
+    gen = TelemetryGenerator(num_validators=NUM_VALIDATORS, num_regions=NUM_REGIONS, seed=seed)
 
-    models.train(train_df)
-    
-    print("Layer 3-5: Running Consensus Simulation Loop...")
-    simulator = ConsensusSimulator(alpha=0.4, beta=0.4, gamma=0.2)
-    
-    # Initialize validators
-    validators = df_agg['validator_id'].unique()
-    simulator.initialize_weights(validators)
-    
-    test_epochs = test_df['epoch'].unique()
-    test_epochs = sorted(list(test_epochs))
-    
-    # Escalating and then recovering CNRS for the stress-test window
-    # Hardcoded to positions 33-49 in the test epoch list (middle of the test phase)
-    attack_epochs = test_epochs[33:49]
-    cnrs_seq = [0.70, 0.70, 0.82, 0.82, 0.91, 0.91, 0.91,  # Tier 1 buildup
-                0.96,                                          # Tier 2
-                0.97,                                          # Tier 3 PEAK (Self-Healing triggered)
-                0.91, 0.91,                                    # Tier 1 recovery
-                0.55, 0.55, 0.55, 0.55, 0.55]                 # De-escalation post self-healing
-    cnrs_override = {ep: cnrs_seq[i] for i, ep in enumerate(attack_epochs)}
-    print(f"[Fault Injection] Self-Healing stress-test window: epoch {attack_epochs[0]} -> {attack_epochs[-1]}")
+    train_epochs = int(NUM_EPOCHS * TRAIN_FRACTION)
+    test_epochs = NUM_EPOCHS - train_epochs
 
-    for epoch in test_epochs:
-        epoch_data = test_df[test_df['epoch'] == epoch].copy()
-        
-        # Network data is same for all rows in the epoch
-        network_data = epoch_data.iloc[0].copy()
-        
-        simulator.step_epoch(epoch, epoch_data, network_data, models,
-                             force_cnrs=cnrs_override.get(epoch, None))
-        
+    validator_ids = gen.get_validator_ids()
+    region_map = {v.id: v.region for v in gen.validators}
+
+    scenario = Scenario(
+        profile_name=scenario_name,
+        num_test_epochs=test_epochs,
+        all_validator_ids=validator_ids,
+        region_map=region_map,
+        seed=seed
+    )
+
+    # ─── Phase 1 & 4: Generate all raw telemetry upfront ──────────────────
+    all_raw_data = []
+
+    # Generate training epochs (normal baseline)
+    for e in range(train_epochs):
+        vdf, ndata = gen.generate_epoch()
+        vdf_copy = vdf.copy()
+        for k, v in ndata.items():
+            vdf_copy[k] = v
+        all_raw_data.append(vdf_copy)
+
+    # Generate testing epochs (with scenario disturbances)
+    for test_idx in range(test_epochs):
+        params = scenario.get_epoch_params(test_idx)
+        vdf, ndata = gen.generate_epoch(
+            latency_factor=params['latency_factor'],
+            load_factor=params['load_factor'],
+            force_partition=params['force_partition'],
+            offline_validators=params['offline_validators'],
+            malicious_validators=params['malicious_validators'],
+        )
+        vdf_copy = vdf.copy()
+        for k, v in ndata.items():
+            vdf_copy[k] = v
+        all_raw_data.append(vdf_copy)
+
+    full_raw_df = pd.concat(all_raw_data, ignore_index=True)
+
+    # ─── Phase 2: Aggregate the entire telemetry sequence once ────────────
+    full_agg = aggregate_telemetry(full_raw_df)
+
+    # Split into train and test sets
+    train_agg = full_agg[full_agg['epoch'] <= train_epochs].copy()
+    test_agg = full_agg[full_agg['epoch'] > train_epochs].copy()
+
+    # ─── Phase 3: Train ML models ────────────────────────────────────────
+    models = PredictiveModels(random_state=seed)
+    models.train(train_agg)
+
+    # Compute training accuracy
+    train_accuracy = {}
+    if models.is_trained:
+        p_fail_pred = models.predict_failure(train_agg)
+        y_true = (train_agg['health_label'] != 'Healthy').astype(int).values
+        train_accuracy['failure_acc'] = float(np.mean((p_fail_pred > 0.5).astype(int) == y_true))
+
+        # Fork accuracy
+        epoch_df = train_agg.groupby('epoch').first().reset_index()
+        p_fork_pred = models.predict_fork(epoch_df)
+        if 'fork_occurrences' in epoch_df.columns:
+            y_fork = (epoch_df['fork_occurrences'] > 0).astype(int).values
+            train_accuracy['fork_acc'] = float(np.mean((p_fork_pred > 0.5).astype(int) == y_fork))
+
+    # ─── Phase 5: Run closed-loop consensus simulator ────────────────────
+    simulator = ConsensusSimulator(mode=baseline_mode)
+    simulator.initialize_weights(validator_ids)
+
+    test_epochs_list = sorted(test_agg['epoch'].unique())
+
+    for e in test_epochs_list:
+        current_agg = test_agg[test_agg['epoch'] == e].copy()
+        if len(current_agg) == 0:
+            continue
+
+        # Network data for fork prediction
+        net_row = current_agg.iloc[0].to_dict()
+
+        # Step the consensus simulator
+        metrics = simulator.step_epoch(
+            epoch=e,
+            validator_data=current_agg,
+            network_data=net_row,
+            models=models
+        )
+
+        if verbose and (e - train_epochs - 1) % 20 == 0:
+            print(f"  Epoch {e}: CNRS={metrics['cnrs']:.3f} "
+                  f"State={metrics['state']} Qt={metrics['qt']:.2f} "
+                  f"Success={metrics['consensus_success']} Fork={metrics['fork_occurred']}")
+
     history_df = simulator.get_history_df()
-    print("Simulation complete.\n")
-    
-    # Print the critical self-healing window
-    critical_mask = history_df['epoch'].isin(attack_epochs)
-    print("=== SELF-HEALING WINDOW ===")
-    print(history_df[critical_mask][['epoch','cnrs','state','qt','fsm_tier','active_committee']].to_string())
-    print("===========================\n")
-    print(history_df.head(5))
-    print(history_df.tail(5))
-    print(f"Total epochs simulated: {len(history_df)}")
-    
-    print("Generating Evaluation results...")
-    evaluator = Evaluator(test_df, history_df, output_dir='./results')
-    evaluator.evaluate_and_plot()
+    return history_df, train_accuracy
+
+
+def main():
+    """Run all experiments and generate evaluation."""
+    start_time = time.time()
+
+    # Scenarios to test
+    test_scenarios = ['normal', 'outage_burst', 'latency_spike',
+                      'partition', 'malicious', 'combined_stress']
+    baseline_names = list(BASELINE_MODES.keys())
+    seeds = RANDOM_SEEDS
+
+    print("=" * 70)
+    print("Predictive Self-Healing Adaptive Consensus — Experiment Runner")
+    print("=" * 70)
+    print(f"Baselines: {baseline_names}")
+    print(f"Scenarios: {test_scenarios}")
+    print(f"Seeds: {seeds}")
+    print(f"Total experiments: {len(baseline_names) * len(test_scenarios) * len(seeds)}")
+    print("=" * 70)
+
+    # Collect all results
+    all_results = []
+    all_histories = {}
+    train_accuracies = []
+
+    total = len(baseline_names) * len(test_scenarios) * len(seeds)
+    count = 0
+
+    for baseline_name in baseline_names:
+        mode = BASELINE_MODES[baseline_name]['mode']
+        for scenario_name in test_scenarios:
+            seed_histories = []
+            for seed in seeds:
+                count += 1
+                print(f"\n[{count}/{total}] Baseline={baseline_name} | "
+                      f"Scenario={scenario_name} | Seed={seed}")
+
+                history_df, accuracy = run_single_experiment(
+                    baseline_mode=mode,
+                    scenario_name=scenario_name,
+                    seed=seed,
+                    verbose=False
+                )
+
+                # Tag results
+                history_df['baseline'] = baseline_name
+                history_df['scenario'] = scenario_name
+                history_df['seed'] = seed
+
+                seed_histories.append(history_df)
+                all_results.append(history_df)
+
+                if accuracy:
+                    accuracy['baseline'] = baseline_name
+                    accuracy['seed'] = seed
+                    train_accuracies.append(accuracy)
+
+                print(f"  → {len(history_df)} epochs | "
+                      f"Fork rate: {history_df['fork_occurred'].mean():.3f} | "
+                      f"Consensus fail: {(~history_df['consensus_success']).mean():.3f}")
+
+            key = (baseline_name, scenario_name)
+            all_histories[key] = pd.concat(seed_histories, ignore_index=True)
+
+    # Combine all results
+    results_df = pd.concat(all_results, ignore_index=True)
+    accuracy_df = pd.DataFrame(train_accuracies) if train_accuracies else pd.DataFrame()
+
+    elapsed = time.time() - start_time
+    print(f"\n{'=' * 70}")
+    print(f"All experiments complete in {elapsed:.1f}s")
+    print(f"Total result rows: {len(results_df)}")
+    print(f"{'=' * 70}\n")
+
+    # ─── Evaluation ──────────────────────────────────────────────────────
+    output_dir = os.path.join(os.path.dirname(__file__), 'results')
+    os.makedirs(output_dir, exist_ok=True)
+
+    print("Generating evaluation results...")
+    evaluator = Evaluator(results_df, accuracy_df, output_dir=output_dir)
+    evaluator.run_full_evaluation()
+
+    print(f"\nResults saved to {output_dir}/")
+    print("Done.")
+
 
 if __name__ == "__main__":
     main()

@@ -5,3 +5,5 @@ matplotlib
 seaborn
 openpyxl
 xlsxwriter
+scipy
+joblib
