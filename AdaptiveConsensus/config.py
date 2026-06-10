@@ -4,8 +4,8 @@ All simulation parameters, ML hyperparameters, and scenario profiles are defined
 """
 
 # ─── Simulation Parameters ────────────────────────────────────────────────────
-NUM_VALIDATORS = 20
-NUM_EPOCHS = 200          # per run
+NUM_VALIDATORS = 50
+NUM_EPOCHS = 300          # per run
 VOTES_PER_EPOCH = 50
 BLOCK_INTERVAL = 12       # seconds between blocks
 BDELAY = 6                # avg block propagation delay (seconds)
@@ -31,6 +31,14 @@ COMMITTEE_SIZE_DEFAULT = None     # None = all validators
 CNRS_ALPHA = 0.4   # weight for max validator failure probability
 CNRS_BETA = 0.4    # weight for mean anomaly score
 CNRS_GAMMA = 0.2   # weight for momentum (previous CNRS)
+
+# ─── Weight Profiles (for sensitivity study) ─────────────────────────────
+WEIGHT_PROFILES = [
+    (0.8, 0.1, 0.1),  # Failure-heavy
+    (0.4, 0.4, 0.2),  # Balanced (Default)
+    (0.1, 0.8, 0.1),  # Anomaly-heavy
+    (0.2, 0.2, 0.6),  # Momentum-heavy
+]
 
 # ─── FSM State Thresholds ─────────────────────────────────────────────────────
 THRESHOLD_CAUTIOUS = 0.30

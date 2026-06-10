@@ -86,29 +86,37 @@ class ConsensusSimulator:
         consensus_success = weight_ratio >= qt
 
         # Consensus time: base + latency influence + failure influence
-        avg_latency = network_data.get('msg_latency_ms', 80) / 1000.0  # to seconds
+        avg_latency = network_data.get('msg_latency_ms', 80) / 1000.0
         avg_delay = float(validator_data['vote_delay_sec'].mean()) if 'vote_delay_sec' in validator_data.columns else 0
-        consensus_time = avg_latency + avg_delay + np.random.normal(0, 0.5)
+        
+        # Tradeoff: Higher qt increases safety but slightly increases consensus time (longer to collect votes)
+        qt_delay = (qt - 0.67) * 2.0 
+        consensus_time = avg_latency + avg_delay + qt_delay + np.random.normal(0, 0.2)
         consensus_time = max(1.0, min(consensus_time, timeout))
 
         if not consensus_success:
             consensus_time = timeout  # timed out
 
-        # Fork: probabilistic based on partition, disagreement, and low quorum margin
+        # Fork simulation (BFT Principles):
+        # A higher Quorum Threshold (qt) SIGNIFICANTLY reduces the probability of a fork (Safety)
         partition = network_data.get('partition_indicator', 0)
-        quorum_margin_val = network_data.get('quorum_margin', 0.8)
-        fork_prob = 0.02  # base
-        if partition:
-            fork_prob += 0.4
-        if quorum_margin_val < 0.3:
-            fork_prob += 0.2
-        if weight_ratio < qt + 0.1:
-            fork_prob += 0.15
-        # Malicious nodes increase fork risk
         mean_anom = float(np.mean(anomaly_scores)) if len(anomaly_scores) > 0 else 0
-        fork_prob += mean_anom * 0.2
+        
+        # Base probability decreases as qt increases
+        base_fork_prob = max(0.01, 0.15 - (qt - 0.67)) 
+        
+        fork_prob = base_fork_prob
+        if partition:
+            fork_prob += (0.5 / qt)  # Partition is dangerous, but high qt helps
+        
+        # Malicious nodes increase fork risk, but high qt mitigates it
+        fork_prob += (mean_anom * 0.4) / qt
 
         fork_occurred = np.random.random() < min(fork_prob, 0.95)
+        
+        # If consensus failed, a fork is very unlikely (Safety over Liveness)
+        if not consensus_success:
+            fork_occurred = False
 
         return consensus_success, fork_occurred, round(consensus_time, 3)
 
@@ -125,17 +133,18 @@ class ConsensusSimulator:
             self.rolling_data = self.rolling_data[self.rolling_data['epoch'] >= min_epoch]
 
         # ─── Predictions ──────────────────────────────────────────────────
-        if self.mode in ('adaptive', 'adaptive_only') and models is not None and models.is_trained:
+        if self.mode == 'adaptive' and models is not None and models.is_trained:
+            # Full system: uses ML predictive lookahead
             p_fail_list = models.predict_failure(validator_data)
             anomaly_scores, is_anomaly = models.predict_anomaly(validator_data)
             p_fork = models.predict_fork(pd.DataFrame([network_data]))[0]
-        elif self.mode == 'healing_only':
-            # Healing-only: use raw current-epoch signals, no ML
-            p_fail_list = np.where(validator_data['uptime'].values == 0, 0.9, 0.1)
+        elif self.mode in ('healing_only', 'adaptive_only'):
+            # Reactive modes: use raw current-epoch signals, no ML lookahead
+            p_fail_list = np.where(validator_data['uptime'].values == 0, 0.95, 0.05)
             anomaly_scores = np.where(
-                validator_data['missed_vote_rate'].values > 0.3, 0.8, 0.1)
+                validator_data['missed_vote_rate'].values > 0.4, 0.85, 0.1)
             is_anomaly = anomaly_scores > 0.7
-            p_fork = 0.5 if network_data.get('partition_indicator', 0) else 0.1
+            p_fork = 0.6 if network_data.get('partition_indicator', 0) else 0.1
         else:
             # Static: no predictions
             p_fail_list = np.zeros(len(validator_data))

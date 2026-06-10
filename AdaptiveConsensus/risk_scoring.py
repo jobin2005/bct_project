@@ -8,15 +8,20 @@ from config import CNRS_ALPHA, CNRS_BETA, CNRS_GAMMA
 
 
 def compute_cnrs(p_fail_list, anomaly_scores, momentum,
-                 alpha=CNRS_ALPHA, beta=CNRS_BETA, gamma=CNRS_GAMMA):
+                 alpha=None, beta=None, gamma=None):
     """
     Compute the Composite Network Risk Score (CNRS).
     CNRS = α·max(p_fail) + β·mean(anomaly) + γ·momentum
     Returns float in [0, 1].
     """
+    # Use global defaults if not provided (allows dynamic override)
+    a = alpha if alpha is not None else CNRS_ALPHA
+    b = beta if beta is not None else CNRS_BETA
+    g = gamma if gamma is not None else CNRS_GAMMA
+
     max_p_fail = float(np.max(p_fail_list)) if len(p_fail_list) > 0 else 0.0
     mean_anomaly = float(np.mean(anomaly_scores)) if len(anomaly_scores) > 0 else 0.0
-    cnrs = alpha * max_p_fail + beta * mean_anomaly + gamma * momentum
+    cnrs = a * max_p_fail + b * mean_anomaly + g * momentum
     return min(max(cnrs, 0.0), 1.0)
 
 
