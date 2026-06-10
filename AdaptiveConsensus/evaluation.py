@@ -431,4 +431,20 @@ class Evaluator:
             f.write(stats_table.to_string(index=False))
             f.write("\n")
 
+            # ─── ML Model Performance ──────────────────────────────────────
+            if self.accuracy_df is not None and len(self.accuracy_df) > 0:
+                f.write(f"\n\n{'=' * 70}\n")
+                f.write("ML MODEL PERFORMANCE (Cross-Seed Validation)\n")
+                f.write("-" * 70 + "\n")
+                
+                adaptive_acc = self.accuracy_df[self.accuracy_df['baseline'] == 'adaptive']
+                if len(adaptive_acc) > 0:
+                    if 'failure_acc' in adaptive_acc.columns:
+                        f.write(f"  Failure Predictor Accuracy : {adaptive_acc['failure_acc'].mean():.4f} "
+                               f"± {adaptive_acc['failure_acc'].std():.4f}\n")
+                    if 'fork_acc' in adaptive_acc.columns:
+                        f.write(f"  Fork Predictor Accuracy    : {adaptive_acc['fork_acc'].mean():.4f} "
+                               f"± {adaptive_acc['fork_acc'].std():.4f}\n")
+                f.write("=" * 70 + "\n")
+
         print(f"  Report saved to {report_path}")
