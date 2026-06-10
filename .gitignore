@@ -3,6 +3,10 @@ __pycache__/
 *.pyo
 venv/
 .venv/
+test_venv/
+*venv/
+env/
+.env/
 *.xlsx
 results/
 *.pkl
@@ -11,3 +15,5 @@ results/
 *.egg-info/
 dist/
 build/
+.idea/
+.vscode/
