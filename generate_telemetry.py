@@ -19,7 +19,7 @@ from openpyxl.utils import get_column_letter
 
 # ─── Simulation Config ────────────────────────────────────────────────────────
 NUM_VALIDATORS   = 20       # nodes in the network
-NUM_EPOCHS       = 2000     # epochs to simulate  → 20 × 2000 = 40 000 rows
+NUM_EPOCHS       = 200    # epochs to simulate  → 20 × 2000 = 40 000 rows
 VOTES_PER_EPOCH  = 50       # max votes per epoch
 BLOCK_INTERVAL   = 12       # seconds between blocks (Ethereum-like)
 BDELAY           = 6        # avg block propagation delay (seconds)
