@@ -1,22 +1,22 @@
 # Predictive Self-Healing Adaptive Consensus for Smart-Grid Blockchains
 
-## 🎓 Publication-Ready Research Framework
+##  Publication-Ready Research Framework
 This repository implements a **5-Layer Adaptive Consensus Pipeline** designed to solve the safety and liveness challenges of blockchain-based smart grids.
 
-### 🚀 Key Features
+###  Key Features
 *   **Predictive Risk Scoring (CNRS)**: Real-time quantification of network risk using ML-driven telemetry analysis.
 *   **Self-Healing FSM**: A 3-tier finite state machine that automatically scales, stabilizes, and recovers the network during outages or partitions.
 *   **High-Scale Simulation**: Validated across **50 validators** and **300+ epochs** for statistical rigor.
 *   **Publication-Grade Evaluation**: Automated multi-seed benchmarking against Static (PBFT), Healing-Only, and Reactive Baselines.
 
-### 📐 The 5-Layer Pipeline
+###  The 5-Layer Pipeline
 1.  **Telemetry Generation**: Clustered smart-grid topology with parameterized disturbance injection.
 2.  **Feature Engineering**: Dual-window (short/long) sliding aggregation of network vitals.
 3.  **ML Risk Prediction**: Triple-model approach (RandomForest, IsolationForest, GradientBoosting) for failure and fork forecasting.
 4.  **Adaptive Reconfiguration**: Dynamic adjustment of Quorum Thresholds ($qt$) and Timeouts based on risk.
 5.  **Self-Healing (FSM)**: Tiered response system (Quarantine, Weighted Reconfiguration, Safe-Mode).
 
-### 📊 Results & Performance
+###  Results & Performance
 *   **Failure Prediction Accuracy**: **90%+**
 *   **Fork Reduction**: **~6% improvement** over standard PBFT.
 *   **Availability**: **~12% improvement** in consensus survival during high-stress scenarios.
@@ -34,7 +34,7 @@ python AdaptiveConsensus/sensitivity_analysis.py
 
 ---
 
-## 🚀 Key Architectural Features
+##  Key Architectural Features
 
 The framework is built upon a **5-Layer Predictive Self-Healing Architecture**:
 
@@ -83,7 +83,7 @@ We evaluate and compare four distinct consensus paradigms:
 
 ---
 
-## 🛠️ Installation and Setup
+##  Installation and Setup
 
 1. **Verify Python Environment**: Ensure you have Python 3.8+ installed.
 2. **Install Dependencies**:
@@ -93,7 +93,7 @@ We evaluate and compare four distinct consensus paradigms:
 
 ---
 
-## 🏃 Running the Experiments
+##  Running the Experiments
 
 To run the complete 120-experiment scientific suite (4 Baselines × 6 Scenarios × 5 Random Seeds) and compile the evaluation report:
 
@@ -106,7 +106,7 @@ python main.py
 
 ---
 
-## 📊 Evaluation & Metrics (`evaluation.py`)
+##  Evaluation & Metrics (`evaluation.py`)
 
 The evaluation engine tracks **10 key performance metrics** across five academic dimensions:
 - **Reliability**: Fork Rate, Consensus Failure Probability.
